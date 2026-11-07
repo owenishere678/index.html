@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Absensi Smartcard</title>
+    <!-- Library untuk QR Code Scanner -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin: 0; padding: 20px; background-color: #f4f7f6; }
+        .container { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        h2 { color: #333; }
+        .tab-btn { padding: 10px 20px; margin: 5px; cursor: pointer; border: none; background: #007bff; color: white; border-radius: 5px; }
+        .tab-btn:hover { background: #0056b3; }
+        .section { display: none; margin-top: 20px; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        .active { display: block; }
+        input[type="text"] { padding: 10px; width: 80%; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 5px; }
+        #result { margin-top: 20px; padding: 15px; border-radius: 5px; font-weight: bold; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Sistem Absensi</h2>
+    <p>Pilih metode absensi:</p>
+    
+    <div>
+        <button class="tab-btn" onclick="showSection('rfid')">💳 RFID / Barcode</button>
+        <button class="tab-btn" onclick="showSection('qr')">📷 QR Code</button>
+        <button class="tab-btn" onclick="showSection('nfc')">📱 NFC (HP)</button>
+    </div>
+
+    <!-- Bagian RFID -->
+    <div id="rfid" class="section active">
+        <h3>Tempelkan Kartu RFID</h3>
+        <p>Pastikan kursor ada di dalam kotak di bawah ini saat menempelkan kartu (Laptop dengan USB RFID).</p>
+        <input type="text" id="rfidInput" placeholder="Tap kartu di sini..." autofocus onkeypress="handleRFID(event)">
+    </div>
+
+    <!-- Bagian QR Code -->
+    <div id="qr" class="section">
+        <h3>Scan QR Code</h3>
+        <div id="qr-reader" style="width:100%"></div>
+    </div>
+
+    <!-- Bagian NFC -->
+    <div id="nfc" class="section">
+        <h3>Scan NFC Smartphone</h3>
+        <p>Tekan tombol lalu tempelkan kartu NFC/KTM ke belakang HP.</p>
+        <button class="tab-btn" style="background:#28a745" onclick="startNFC()">Mulai Scan NFC</button>
+    </div>
+
+    <!-- Notifikasi Hasil -->
+    <div id="result" style="display:none;"></div>
+</div>
+
+<script>
+    // ⚠️ PENTING: HAPUS TEKS DI BAWAH INI DAN PASTE URL WEB APP BARU ANDA
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz7awEdfSMKMP6M4NkBGWZlR_525AWaqrgke-kgtKbnu-XuGOCYFKk5Zf0Clncwjgvmig/exec";
+
+    // --- FUNGSI KIRIM DATA & TAMPILKAN FOTO ---
+    function sendData(uid, method) {
+        const resultDiv = document.getElementById('result');
+        resultDiv.style.display = 'block';
+        resultDiv.className = '';
+        resultDiv.innerHTML = "⏳ Memproses data...";
+
+        fetch(`${SCRIPT_URL}?uid=${encodeURIComponent(uid)}&method=${method}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === "success") {
+                    resultDiv.className = 'success';
+                    
+                    // Siapkan gambar jika ada
+                    let imgHtml = '';
+                    if (data.foto && data.foto.trim() !== "") {
+                        imgHtml = `<br><img src="${data.foto}" alt="Foto Siswa" style="max-width: 150px; height: auto; margin-top: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">`;
+                    }
+                    
+                    resultDiv.innerHTML = `✅ Berhasil: <strong>${data.nama}</strong> (via ${data.method}) pada ${data.waktu} ${imgHtml}`;
+                } else {
+                    resultDiv.className = 'error';
+                    resultDiv.innerHTML = `❌ Error: ${data.message || "Gagal mencatat."}`;
+                }
+            })
+            .catch(error => {
+                console.error("Error:", error);
+                resultDiv.className = 'error';
+                resultDiv.innerHTML = "❌ Terjadi kesalahan jaringan. Pastikan URL Apps Script sudah benar.";
+            });
+    }
+
+    // --- TAB NAVIGASI ---
+    function showSection(id) {
+        document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+        if(id === 'rfid') document.getElementById('rfidInput').focus();
+    }
+
+    // --- METODE 1: RFID ---
+    function handleRFID(e) {
+        if (e.key === 'Enter') {
+            const uid = document.getElementById('rfidInput').value.trim();
+            if(uid) {
+                sendData(uid, "RFID");
+                document.getElementById('rfidInput').value = '';
+            }
+        }
+    }
+
+    // --- METODE 2: QR CODE ---
+    const html5QrcodeScanner = new Html5QrcodeScanner("qr-reader", { fps: 10, qrbox: 250 });
+    function onScanSuccess(decodedText, decodedResult) {
+        html5QrcodeScanner.pause();
+        sendData(decodedText, "QR_Code");
+        setTimeout(() => { html5QrcodeScanner.resume(); }, 3000); 
+    }
+    html5QrcodeScanner.render(onScanSuccess);
+
+    // --- METODE 3: NFC ---
+    async function startNFC() {
+        if ('NDEFReader' in window) {
+            try {
+                const ndef = new NDEFReader();
+                await ndef.scan();
+                const resultDiv = document.getElementById('result');
+                resultDiv.style.display = 'block';
+                resultDiv.className = '';
+                resultDiv.innerHTML = "NFC aktif. Silakan tempelkan kartu...";
+                
+                ndef.onreading = event => {
+                    const serialNumber = event.serialNumber; 
+                    sendData(serialNumber, "NFC");
+                };
+            } catch (error) {
+                alert("Error NFC: " + error.message);
+            }
+        } else {
+            alert("Maaf, browser atau perangkat ini tidak mendukung Web NFC API. Gunakan Chrome di Android.");
+        }
+    }
+</script>
+
+</body>
+</html>
